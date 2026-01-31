@@ -123,7 +123,6 @@ if uploaded_file is not None:
             st.write(df[column_to_plot].describe())
         else:
             st.write(df[column_to_plot].value_counts())
-                st.write(df[column_to_plot].value_counts())
 
     # --- TAB 3: RELACIONES (BIVARIABLE) ---
     with tab3:
