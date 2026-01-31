@@ -86,11 +86,11 @@ if uploaded_file is not None:
             st.dataframe(df.describe())
 
     # --- TAB 2: ANÁLISIS UNIVARIABLE (CORREGIDO) ---
-with tab2:
-    st.subheader("Explorar una sola variable")
-    column_to_plot = st.selectbox("Selecciona una columna:", all_columns, key="univ_col")
+    with tab2:
+        st.subheader("Explorar una sola variable")
+        column_to_plot = st.selectbox("Selecciona una columna:", all_columns, key="univ_col")
     
-    col_graph, col_stats = st.columns([3, 1])
+        col_graph, col_stats = st.columns([3, 1])
     
     with col_graph:
         if column_to_plot in numeric_columns:
@@ -123,6 +123,7 @@ with tab2:
             st.write(df[column_to_plot].describe())
         else:
             st.write(df[column_to_plot].value_counts())
+                st.write(df[column_to_plot].value_counts())
 
     # --- TAB 3: RELACIONES (BIVARIABLE) ---
     with tab3:
