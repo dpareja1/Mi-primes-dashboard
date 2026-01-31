@@ -232,5 +232,5 @@ else:
                 else:
                     st.info("Escribe una pregunta para comenzar.")
 
-    else:
-        st.info("Esperando archivo... Por favor sube un CSV o Excel en la barra lateral.")
+        else:
+            st.info("Esperando archivo... Por favor sube un CSV o Excel en la barra lateral.")
