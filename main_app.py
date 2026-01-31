@@ -1,168 +1,166 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-# Configuración de la página
-st.set_page_config(page_title="Dashboard Energía Renovable", layout="wide")
+# --- CONFIGURACIÓN DE LA PÁGINA ---
+st.set_page_config(page_title="Analizador de Datos Genérico", layout="wide")
 
-# Título
-st.title("⚡ Análisis Exploratorio: Plantas de Energía Renovable")
+st.title("📊 EDA Pro: Analizador Exploratorio de Datos")
+st.markdown("""
+Esta herramienta acepta **cualquier conjunto de datos** y genera un reporte automático.
+Sube tu archivo CSV o Excel para comenzar.
+""")
 
-# --- SIDEBAR: CARGA DE ARCHIVOS ---
-st.sidebar.header("Carga de Datos")
-uploaded_file = st.sidebar.file_uploader("Sube tu archivo CSV aquí", type=["csv"])
-
-# Función de carga con manejo de errores y caché
+# --- FUNCIÓN DE CARGA ---
 @st.cache_data
 def load_data(file):
     try:
-        # Intentar leer el archivo CSV
-        df = pd.read_csv(file)
-        
-        # Limpieza básica: Convertir fecha a datetime si existe la columna
-        if 'Fecha_Entrada_Operacion' in df.columns:
-            df['Fecha_Entrada_Operacion'] = pd.to_datetime(df['Fecha_Entrada_Operacion'])
-            
-        return df
-    except Exception as e:
-        # Retornar el error para manejarlo fuera
-        return str(e)
-
-# --- LÓGICA PRINCIPAL ---
-if uploaded_file is not None:
-    # 1. Cargar datos
-    data_result = load_data(uploaded_file)
-
-    # 2. Verificar si hubo error (si el resultado es un string, es un mensaje de error)
-    if isinstance(data_result, str):
-        st.error(f"❌ Hubo un error al procesar el archivo: {data_result}")
-    else:
-        df = data_result
-        st.success("✅ Archivo cargado exitosamente.")
-
-        # --- VERIFICACIÓN DE COLUMNAS REQUERIDAS ---
-        # Verificamos que existan las columnas clave para que no falle el resto del código
-        required_columns = ["Tecnologia", "Estado_Actual", "Capacidad_Instalada_MW", "Operador"]
-        missing_cols = [col for col in required_columns if col not in df.columns]
-
-        if missing_cols:
-            st.error(f"El archivo subido no tiene las columnas requeridas: {', '.join(missing_cols)}")
+        filename = file.name
+        if filename.endswith('.csv'):
+            df = pd.read_csv(file)
+        elif filename.endswith('.xlsx') or filename.endswith('.xls'):
+            df = pd.read_excel(file)
         else:
-            # ==========================================
-            # AQUI COMIENZA EL DASHBOARD (FILTROS Y GRÁFICOS)
-            # ==========================================
+            return None, "Formato no soportado."
+        return df, None
+    except Exception as e:
+        return None, str(e)
+
+# --- SIDEBAR: CARGA Y FILTROS GLOBALES ---
+st.sidebar.header("1. Carga de Datos")
+uploaded_file = st.sidebar.file_uploader("Sube tu archivo", type=["csv", "xlsx", "xls"])
+
+if uploaded_file is not None:
+    # Cargar datos
+    df, error = load_data(uploaded_file)
+    
+    if error:
+        st.error(f"Error al cargar el archivo: {error}")
+        st.stop()
+        
+    st.sidebar.success("✅ Datos cargados correctamente")
+    
+    # Identificar tipos de columnas
+    all_columns = df.columns.tolist()
+    numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+    categorical_columns = df.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
+
+    # --- FILTRO DINÁMICO GENÉRICO ---
+    st.sidebar.header("2. Filtros Globales")
+    # Permitimos al usuario elegir una columna para filtrar (opcional)
+    filter_col = st.sidebar.selectbox("Filtrar por columna (Opcional):", ["Ninguno"] + categorical_columns)
+    
+    if filter_col != "Ninguno":
+        filter_val = st.sidebar.multiselect(
+            f"Valores de '{filter_col}':", 
+            options=df[filter_col].unique(),
+            default=df[filter_col].unique()
+        )
+        if filter_val:
+            df = df[df[filter_col].isin(filter_val)]
+
+    # --- PESTAÑAS DEL DASHBOARD ---
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 Resumen de Datos", "📊 Análisis Univariable", "📈 Relaciones (Bivariable)", "🔥 Correlaciones"])
+
+    # --- TAB 1: RESUMEN DE DATOS ---
+    with tab1:
+        st.subheader("Vista Previa del Dataset")
+        st.dataframe(df.head())
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Filas", df.shape[0])
+        col2.metric("Columnas", df.shape[1])
+        col3.metric("Valores Nulos Totales", df.isnull().sum().sum())
+        
+        with st.expander("Ver tipos de datos y nulos por columna"):
+            info_df = pd.DataFrame({
+                'Tipo de Dato': df.dtypes,
+                'Nulos': df.isnull().sum(),
+                '% Nulos': (df.isnull().sum() / len(df)) * 100
+            })
+            st.dataframe(info_df)
             
-            # --- FILTROS ---
-            st.sidebar.header("Filtros")
+        with st.expander("Estadísticas Descriptivas"):
+            st.dataframe(df.describe())
 
-            # Filtro por Tecnología
-            tecnologias = st.sidebar.multiselect(
-                "Seleccionar Tecnología:",
-                options=df["Tecnologia"].unique(),
-                default=df["Tecnologia"].unique()
-            )
-
-            # Filtro por Estado
-            estados = st.sidebar.multiselect(
-                "Estado de la Planta:",
-                options=df["Estado_Actual"].unique(),
-                default=df["Estado_Actual"].unique()
-            )
-
-            # Aplicar filtros
-            if not tecnologias or not estados:
-                st.warning("Por favor selecciona al menos una tecnología y un estado.")
-                st.stop()
-
-            df_selection = df.query(
-                "Tecnologia == @tecnologias & Estado_Actual == @estados"
-            )
-
-            # --- KPIs PRINCIPALES ---
-            st.markdown("### Métricas Generales")
-            col1, col2, col3, col4 = st.columns(4)
-
-            total_capacidad = df_selection["Capacidad_Instalada_MW"].sum()
-            
-            # Manejo de error si la columna no existe o está vacía para promedios
-            if "Eficiencia_Planta_Pct" in df.columns:
-                promedio_eficiencia = df_selection["Eficiencia_Planta_Pct"].mean()
+    # --- TAB 2: ANÁLISIS UNIVARIABLE ---
+    with tab2:
+        st.subheader("Explorar una sola variable")
+        column_to_plot = st.selectbox("Selecciona una columna:", all_columns, key="univ_col")
+        
+        col_graph, col_stats = st.columns([3, 1])
+        
+        with col_graph:
+            if column_to_plot in numeric_columns:
+                st.write(f"Distribución de **{column_to_plot}** (Numérica)")
+                fig = px.histogram(df, x=column_to_plot, marginal="box", title=f"Histograma de {column_to_plot}")
+                st.plotly_chart(fig, use_container_width=True)
             else:
-                promedio_eficiencia = 0
-
-            if "Inversion_Inicial_MUSD" in df.columns:
-                total_inversion = df_selection["Inversion_Inicial_MUSD"].sum()
-            else:
-                total_inversion = 0
+                st.write(f"Conteo de **{column_to_plot}** (Categórica)")
+                fig = px.bar(df[column_to_plot].value_counts().reset_index(), 
+                             x="index", y=column_to_plot, 
+                             labels={'index': column_to_plot, column_to_plot: 'Conteo'},
+                             title=f"Frecuencia de {column_to_plot}")
+                st.plotly_chart(fig, use_container_width=True)
                 
-            conteo_plantas = df_selection.shape[0]
+        with col_stats:
+            st.write("Estadísticas rápidas:")
+            if column_to_plot in numeric_columns:
+                st.write(df[column_to_plot].describe())
+            else:
+                st.write(df[column_to_plot].value_counts())
 
-            col1.metric("Capacidad Total (MW)", f"{total_capacidad:,.2f}")
-            col2.metric("Eficiencia Promedio", f"{promedio_eficiencia:.1f}%")
-            col3.metric("Inversión Total (MUSD)", f"${total_inversion:,.2f}")
-            col4.metric("Total Plantas", conteo_plantas)
-
-            st.markdown("---")
-
-            # --- VISUALIZACIONES ---
+    # --- TAB 3: RELACIONES (BIVARIABLE) ---
+    with tab3:
+        st.subheader("Comparar dos variables")
+        c1, c2, c3 = st.columns(3)
+        x_axis = c1.selectbox("Eje X:", all_columns, index=0)
+        y_axis = c2.selectbox("Eje Y:", all_columns, index=1 if len(all_columns) > 1 else 0)
+        color_col = c3.selectbox("Color (Agrupación):", ["Ninguno"] + categorical_columns)
+        
+        color_arg = None if color_col == "Ninguno" else color_col
+        
+        st.markdown("---")
+        
+        # Lógica automática de gráficos según tipos de datos
+        if x_axis in numeric_columns and y_axis in numeric_columns:
+            st.caption("Gráfico de Dispersión (Numérico vs Numérico)")
+            fig = px.scatter(df, x=x_axis, y=y_axis, color=color_arg, title=f"{x_axis} vs {y_axis}")
+            st.plotly_chart(fig, use_container_width=True)
             
-            try:
-                # 1. Capacidad por Operador y Tecnología
-                st.subheader("1. Distribución de Capacidad por Operador")
-                fig_bar = px.bar(
-                    df_selection, 
-                    x="Operador", 
-                    y="Capacidad_Instalada_MW", 
-                    color="Tecnologia",
-                    title="Capacidad Instalada por Operador (MW)",
-                    barmode="group",
-                    template="plotly_white"
-                )
-                st.plotly_chart(fig_bar, use_container_width=True)
+        elif (x_axis in categorical_columns and y_axis in numeric_columns) or (x_axis in numeric_columns and y_axis in categorical_columns):
+            st.caption("Gráfico de Caja (Categórico vs Numérico)")
+            # Asegurar que la categoría quede en el eje correcto para boxplot visualmente
+            if x_axis in categorical_columns:
+                fig = px.box(df, x=x_axis, y=y_axis, color=color_arg, title=f"Distribución de {y_axis} por {x_axis}")
+            else:
+                fig = px.box(df, x=y_axis, y=x_axis, color=color_arg, orient='h', title=f"Distribución de {x_axis} por {y_axis}")
+            st.plotly_chart(fig, use_container_width=True)
+            
+        else:
+            st.warning("Selecciona al menos una variable numérica para gráficos XY estándar, o usa el análisis univariable.")
 
-                col_charts_1, col_charts_2 = st.columns(2)
-
-                with col_charts_1:
-                    # 2. Relación Inversión vs Generación
-                    if "Inversion_Inicial_MUSD" in df.columns and "Generacion_Diaria_MWh" in df.columns:
-                        st.subheader("2. Inversión vs. Generación Diaria")
-                        fig_scatter = px.scatter(
-                            df_selection,
-                            x="Inversion_Inicial_MUSD",
-                            y="Generacion_Diaria_MWh",
-                            color="Tecnologia",
-                            size="Capacidad_Instalada_MW",
-                            hover_data=df_selection.columns[:5], # Tooltip básico
-                            title="Relación Costo-Beneficio (Tamaño = Capacidad MW)"
-                        )
-                        st.plotly_chart(fig_scatter, use_container_width=True)
-                    else:
-                        st.info("Faltan columnas para el gráfico de dispersión.")
-
-                with col_charts_2:
-                    # 3. Estado de los proyectos
-                    st.subheader("3. Estado Actual de los Proyectos")
-                    fig_pie = px.pie(
-                        df_selection,
-                        names="Estado_Actual",
-                        title="Proporción por Estado del Proyecto",
-                        hole=0.4
-                    )
-                    st.plotly_chart(fig_pie, use_container_width=True)
-                    
-            except Exception as e_graph:
-                st.error(f"Error al generar gráficos: {e_graph}")
-
-            # --- MUESTRA DE DATOS ---
-            with st.expander("Ver Datos Crudos"):
-                st.dataframe(df_selection)
+    # --- TAB 4: CORRELACIONES ---
+    with tab4:
+        st.subheader("Mapa de Calor de Correlaciones")
+        if len(numeric_columns) > 1:
+            corr_matrix = df[numeric_columns].corr()
+            
+            # Usamos Plotly para heatmap interactivo
+            fig_corr = px.imshow(corr_matrix, text_auto=True, aspect="auto", color_continuous_scale='RdBu_r', title="Matriz de Correlación")
+            st.plotly_chart(fig_corr, use_container_width=True)
+        else:
+            st.info("Se necesitan al menos 2 columnas numéricas para calcular correlaciones.")
 
 else:
-    # Mensaje de bienvenida cuando no hay archivo
-    st.info("👋 ¡Hola! Por favor sube un archivo CSV desde la barra lateral para comenzar el análisis.")
-    
-    # Opcional: Mostrar un ejemplo de cómo debe ser el archivo
+    # Pantalla de bienvenida
+    st.info("Esperando archivo... Por favor sube un CSV o Excel en la barra lateral.")
+    st.markdown("### ¿Qué hace esta app?")
     st.markdown("""
-    **Formato esperado del CSV:**
-    Debe contener columnas como: `Tecnologia`, `Operador`, `Capacidad_Instalada_MW`, `Estado_Actual`, etc.
+    1.  **Detección automática**: Identifica columnas numéricas y de texto.
+    2.  **Calidad de datos**: Muestra nulos y tipos de datos.
+    3.  **Gráficos dinámicos**: Tú eliges qué variables cruzar (X vs Y).
+    4.  **Soporte de archivos**: Acepta CSV y Excel.
     """)
