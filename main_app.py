@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import seaborn as sns
 import matplotlib.pyplot as plt
+from groq import Groq  # Importamos Groq
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="Analizador de Datos Genérico", layout="wide")
@@ -176,3 +177,60 @@ else:
     3.  **Gráficos dinámicos**: Tú eliges qué variables cruzar (X vs Y).
     4.  **Soporte de archivos**: Acepta CSV y Excel.
     """)
+    # --- TAB 5: ASISTENTE DE ANÁLISIS IA ---
+    with tab5:
+        st.subheader("Análisis Inteligente con Llama 3.3 Versatile")
+        
+        if not groq_api_key:
+            st.warning("⚠️ Por favor, introduce tu API Key de Groq en la barra lateral para activar el asistente.")
+        else:
+            st.markdown("Pregunta lo que quieras sobre tus datos o solicita un análisis general.")
+            
+            user_question = st.text_area("Ejemplo: '¿Qué tendencias observas en la capacidad instalada?' o 'Resume este dataset'.")
+            
+            if st.button("Generar Análisis"):
+                if user_question:
+                    try:
+                        # Inicializar cliente de Groq
+                        client = Groq(api_key=groq_api_key)
+                        
+                        # Preparamos un resumen estadístico para enviarlo como contexto
+                        # Solo enviamos el describe() y info para no saturar los tokens
+                        contexto_datos = df.describe(include='all').to_string()
+                        columnas_info = ", ".join(all_columns)
+                        
+                        prompt = f"""
+                        Actúa como un experto científico de datos. Analiza el siguiente resumen estadístico de un dataset
+                        y responde a la pregunta del usuario.
+                        
+                        Nombres de columnas: {columnas_info}
+                        
+                        Resumen estadístico:
+                        {contexto_datos}
+                        
+                        Pregunta del usuario: {user_question}
+                        
+                        Proporciona una respuesta detallada, profesional y en español.
+                        """
+                        
+                        with st.spinner("Llama está pensando..."):
+                            completion = client.chat.completions.create(
+                                model="llama-3.3-70b-versatile",
+                                messages=[
+                                    {"role": "system", "content": "Eres un asistente experto en análisis de datos."},
+                                    {"role": "user", "content": prompt}
+                                ],
+                                temperature=0.7,
+                                max_tokens=2048
+                            )
+                            
+                            st.markdown("### 📝 Respuesta del Asistente:")
+                            st.write(completion.choices[0].message.content)
+                            
+                    except Exception as e:
+                        st.error(f"Ocurrió un error con la IA: {e}")
+                else:
+                    st.info("Escribe una pregunta para comenzar.")
+
+else:
+    st.info("Esperando archivo... Por favor sube un CSV o Excel en la barra lateral.")
