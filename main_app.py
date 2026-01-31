@@ -85,32 +85,44 @@ if uploaded_file is not None:
         with st.expander("Estadísticas Descriptivas"):
             st.dataframe(df.describe())
 
-    # --- TAB 2: ANÁLISIS UNIVARIABLE ---
-    with tab2:
-        st.subheader("Explorar una sola variable")
-        column_to_plot = st.selectbox("Selecciona una columna:", all_columns, key="univ_col")
-        
-        col_graph, col_stats = st.columns([3, 1])
-        
-        with col_graph:
-            if column_to_plot in numeric_columns:
-                st.write(f"Distribución de **{column_to_plot}** (Numérica)")
-                fig = px.histogram(df, x=column_to_plot, marginal="box", title=f"Histograma de {column_to_plot}")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.write(f"Conteo de **{column_to_plot}** (Categórica)")
-                fig = px.bar(df[column_to_plot].value_counts().reset_index(), 
-                             x="index", y=column_to_plot, 
-                             labels={'index': column_to_plot, column_to_plot: 'Conteo'},
-                             title=f"Frecuencia de {column_to_plot}")
-                st.plotly_chart(fig, use_container_width=True)
+    # --- TAB 2: ANÁLISIS UNIVARIABLE (CORREGIDO) ---
+with tab2:
+    st.subheader("Explorar una sola variable")
+    column_to_plot = st.selectbox("Selecciona una columna:", all_columns, key="univ_col")
+    
+    col_graph, col_stats = st.columns([3, 1])
+    
+    with col_graph:
+        if column_to_plot in numeric_columns:
+            st.write(f"Distribución de **{column_to_plot}** (Numérica)")
+            fig = px.histogram(df, x=column_to_plot, marginal="box", title=f"Histograma de {column_to_plot}")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.write(f"Conteo de **{column_to_plot}** (Categórica)")
+            
+            # --- SOLUCIÓN AL ERROR ---
+            # Preparamos los datos de conteo de forma segura
+            conteo_df = df[column_to_plot].value_counts().reset_index()
+            # Renombramos explícitamente para evitar conflictos con 'index'
+            conteo_df.columns = [column_to_plot, 'Conteo'] 
+            
+            fig = px.bar(
+                conteo_df, 
+                x=column_to_plot, # La categoría
+                y='Conteo',       # El valor contado
+                title=f"Frecuencia de {column_to_plot}",
+                labels={column_to_plot: 'Categoría', 'Conteo': 'Cantidad de Registros'},
+                template="plotly_white"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            # ---------------------------
                 
-        with col_stats:
-            st.write("Estadísticas rápidas:")
-            if column_to_plot in numeric_columns:
-                st.write(df[column_to_plot].describe())
-            else:
-                st.write(df[column_to_plot].value_counts())
+    with col_stats:
+        st.write("Estadísticas rápidas:")
+        if column_to_plot in numeric_columns:
+            st.write(df[column_to_plot].describe())
+        else:
+            st.write(df[column_to_plot].value_counts())
 
     # --- TAB 3: RELACIONES (BIVARIABLE) ---
     with tab3:
